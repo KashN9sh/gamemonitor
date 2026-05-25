@@ -14,6 +14,14 @@ final class AudioPipeline: ObservableObject {
     @Published var volume: Float = AppSettings.volume {
         didSet {
             AppSettings.volume = volume
+            // Любой drag по слайдеру в UI сразу снимает mute — иначе можно
+            // оказаться в состоянии isMuted=true & volume=0.5 одновременно,
+            // когда ползунок «двигается», а звук молчит.
+            if volume > 0, isMuted {
+                isMuted = false
+                return
+            }
+            print("[AudioPipeline] volume didSet → \(volume), muted=\(isMuted)")
             applyToCapture()
         }
     }
@@ -21,6 +29,7 @@ final class AudioPipeline: ObservableObject {
     @Published var isMuted: Bool = AppSettings.isMuted {
         didSet {
             AppSettings.isMuted = isMuted
+            print("[AudioPipeline] isMuted didSet → \(isMuted), volume=\(volume)")
             applyToCapture()
         }
     }

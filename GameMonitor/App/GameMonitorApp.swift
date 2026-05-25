@@ -10,15 +10,25 @@ struct GameMonitorApp: App {
         }
         .commands {
             CommandGroup(replacing: .newItem) {}
-            CommandMenu("Вид") {
+            // Расширяем стандартное View-меню (там уже живёт "Enter Full Screen"
+            // от macOS), а не создаём дубль.
+            CommandGroup(after: .sidebar) {
+                Divider()
                 Button("На весь экран") {
                     appModel.enterFullscreen()
                 }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
-                Button("Выйти из fullscreen") {
-                    appModel.exitFullscreen()
+            }
+            CommandMenu("Захват") {
+                Button(appModel.capture.isRunning ? "Стоп" : "Старт") {
+                    if appModel.capture.isRunning {
+                        appModel.stop()
+                    } else {
+                        appModel.start()
+                    }
                 }
-                .keyboardShortcut(.escape, modifiers: [])
+                .keyboardShortcut(.return, modifiers: .command)
+                Toggle("Показывать статистику", isOn: $appModel.showStatsOverlay)
             }
         }
 

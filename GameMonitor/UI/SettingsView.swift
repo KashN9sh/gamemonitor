@@ -17,170 +17,219 @@ struct SettingsView: View {
             DiagnosticsTab(appModel: appModel)
                 .tabItem { Label("Диагностика", systemImage: "stethoscope") }
         }
-        .frame(width: 520, height: 540)
-        .padding(12)
+        .padding(16)
+        .frame(minWidth: 540, minHeight: 580)
+        .preferredColorScheme(.dark)
     }
 }
+
+// MARK: - Capture
 
 private struct CaptureSettingsTab: View {
     @ObservedObject var appModel: AppModel
 
     var body: some View {
-        Form {
-            Section("Захват") {
-                Text("При Switch «Авто» смена пресета здесь обычно **ничего не меняет** — UVC остаётся тем же. Сначала задайте разрешение на консоли.")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-
-                if appModel.manualFormatID != nil {
-                    HStack {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                        Text("Активен ручной формат UVC из вкладки «Диагностика». Пресет игнорируется.")
+        ScrollView {
+            VStack(spacing: 14) {
+                GlassCard("Источник UVC", icon: "video.fill") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("При Switch «Авто» смена пресета здесь обычно ничего не меняет — UVC остаётся тем же. Сначала задайте разрешение на консоли.")
                             .font(.caption)
+                            .foregroundStyle(.orange)
+
+                        if appModel.manualFormatID != nil {
+                            Label("Активен ручной формат UVC из вкладки «Диагностика». Пресет игнорируется.",
+                                  systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+
+                        Picker("Запрос UVC (эксперт)", selection: $appModel.videoPreset) {
+                            ForEach(VideoCapturePreset.allCases) { preset in
+                                Text(preset.title).tag(preset)
+                            }
+                        }
+
+                        Text(appModel.videoPreset.subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        if appModel.capture.isRunning {
+                            Button("Применить режим (перезапуск)") {
+                                appModel.applyPresetAndRestart()
+                            }
+                            .buttonStyle(.glassProminent)
+                        }
                     }
                 }
 
-                Picker("Запрос UVC (эксперт)", selection: $appModel.videoPreset) {
-                    ForEach(VideoCapturePreset.allCases) { preset in
-                        Text(preset.title).tag(preset)
+                GlassCard("Устройство", icon: "cable.connector") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Picker("Устройство", selection: $appModel.selectedDeviceID) {
+                            ForEach(appModel.devices) { device in
+                                Text(device.name).tag(Optional(device.id))
+                            }
+                        }
+                        .onAppear { appModel.reloadDevices() }
+                        .onChange(of: appModel.selectedDeviceID) { _, _ in
+                            appModel.refreshDeviceMetadata()
+                        }
+
+                        Text(appModel.capture.activeFormatDescription)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        HStack {
+                            Spacer()
+                            Button("Сохранить") {
+                                appModel.persistSettings()
+                            }
+                            .buttonStyle(.glass)
+                        }
                     }
                 }
-
-                Text(appModel.videoPreset.subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                if appModel.capture.isRunning {
-                    Button("Применить режим (перезапуск)") {
-                        appModel.applyPresetAndRestart()
-                    }
-                }
-
-                Picker("Устройство", selection: $appModel.selectedDeviceID) {
-                    ForEach(appModel.devices) { device in
-                        Text(device.name).tag(Optional(device.id))
-                    }
-                }
-                .onAppear { appModel.reloadDevices() }
-                .onChange(of: appModel.selectedDeviceID) { _, _ in
-                    appModel.refreshDeviceMetadata()
-                }
-
-                Text(appModel.capture.activeFormatDescription)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
-
-            Section {
-                Button("Сохранить") {
-                    appModel.persistSettings()
-                }
-            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 6)
         }
-        .formStyle(.grouped)
     }
 }
+
+// MARK: - Display
 
 private struct DisplaySettingsTab: View {
     @ObservedObject var appModel: AppModel
 
     var body: some View {
-        Form {
-            Section("Дисплей") {
-                Picker("Экран", selection: $appModel.selectedScreenID) {
-                    ForEach(appModel.screens) { screen in
-                        Text(screen.name).tag(Optional(screen.id))
+        ScrollView {
+            VStack(spacing: 14) {
+                GlassCard("Дисплей", icon: "display") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Picker("Экран", selection: $appModel.selectedScreenID) {
+                            ForEach(appModel.screens) { screen in
+                                Text(screen.name).tag(Optional(screen.id))
+                            }
+                        }
+
+                        Picker("Апскейл", selection: $appModel.upscaleMode) {
+                            ForEach(UpscaleMode.allCases) { mode in
+                                Text(mode.title).tag(mode)
+                            }
+                        }
+                        .onChange(of: appModel.upscaleMode) { _, _ in
+                            appModel.applyUpscaleMode()
+                        }
+
+                        Text("MetalFX Spatial — нейронный апскейлер Apple, оптимизирован для игр и работает на Apple Silicon. Без апскейла рендер идёт в нативном размере UVC.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
-                Picker("Апскейл", selection: $appModel.upscaleMode) {
-                    ForEach(UpscaleMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
+                GlassCard("Поведение", icon: "rectangle.expand.vertical") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Toggle("Fullscreen при запуске", isOn: $appModel.fullscreenOnLaunch)
+                        Toggle("Показывать статистику", isOn: $appModel.showStatsOverlay)
+
+                        Button {
+                            appModel.enterFullscreen()
+                        } label: {
+                            Label("На весь экран сейчас", systemImage: "arrow.up.left.and.arrow.down.right")
+                        }
+                        .buttonStyle(.glass)
+                        .keyboardShortcut("f", modifiers: [.command, .shift])
                     }
-                }
-                .onChange(of: appModel.upscaleMode) { _, _ in
-                    appModel.applyUpscaleMode()
-                }
-
-                Text("MetalFX Spatial — нейронный апскейлер Apple, оптимизирован для игр и работает на Apple Silicon. Без апскейла рендер идёт в нативном размере UVC, что минимально нагружает GPU.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Toggle("Fullscreen при запуске", isOn: $appModel.fullscreenOnLaunch)
-                Toggle("Показывать статистику", isOn: $appModel.showStatsOverlay)
-
-                Button("На весь экран сейчас") {
-                    appModel.enterFullscreen()
                 }
             }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 6)
         }
-        .formStyle(.grouped)
     }
 }
+
+// MARK: - Audio
 
 private struct AudioSettingsTab: View {
     @ObservedObject var appModel: AppModel
 
     var body: some View {
-        Form {
-            Section("Аудио устройство") {
-                if appModel.audioDevices.isEmpty {
-                    Text("Не найдено ни одного audio-устройства. Проверьте, что Cam Link подключён и в Системных настройках macOS → Конфиденциальность → Микрофон разрешён доступ для GameMonitor.")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                } else {
-                    Picker("Источник", selection: Binding(
-                        get: { appModel.selectedAudioDeviceID ?? "__auto__" },
-                        set: { newValue in
-                            appModel.selectedAudioDeviceID = newValue == "__auto__" ? nil : newValue
+        ScrollView {
+            VStack(spacing: 14) {
+                GlassCard("Аудио устройство", icon: "mic.fill") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if appModel.audioDevices.isEmpty {
+                            Label("Не найдено ни одного audio-устройства. Проверьте, что Cam Link подключён и в Системных настройках macOS → Конфиденциальность → Микрофон разрешён доступ для GameMonitor.",
+                                  systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        } else {
+                            Picker("Источник", selection: Binding(
+                                get: { appModel.selectedAudioDeviceID ?? "__auto__" },
+                                set: { newValue in
+                                    appModel.selectedAudioDeviceID = newValue == "__auto__" ? nil : newValue
+                                }
+                            )) {
+                                Text("Авто (по имени видеоустройства)").tag("__auto__")
+                                ForEach(appModel.audioDevices) { device in
+                                    Text(device.name).tag(device.id)
+                                }
+                            }
+                            .onChange(of: appModel.selectedAudioDeviceID) { _, _ in
+                                AppSettings.selectedAudioDeviceID = appModel.selectedAudioDeviceID
+                                if appModel.capture.isRunning {
+                                    appModel.stop()
+                                    appModel.start()
+                                }
+                            }
                         }
-                    )) {
-                        Text("Авто (по имени видеоустройства)").tag("__auto__")
-                        ForEach(appModel.audioDevices) { device in
-                            Text(device.name).tag(device.id)
+
+                        Button {
+                            appModel.reloadDevices()
+                        } label: {
+                            Label("Обновить список", systemImage: "arrow.clockwise")
                         }
-                    }
-                    .onChange(of: appModel.selectedAudioDeviceID) { _, _ in
-                        AppSettings.selectedAudioDeviceID = appModel.selectedAudioDeviceID
-                        if appModel.capture.isRunning {
-                            appModel.stop()
-                            appModel.start()
-                        }
+                        .buttonStyle(.glass)
                     }
                 }
 
-                Button("Обновить список") {
-                    appModel.reloadDevices()
+                GlassCard("Громкость", icon: "speaker.wave.2.fill") {
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(spacing: 12) {
+                            Image(systemName: appModel.audio.isMuted ? "speaker.slash.fill" : "speaker.wave.1.fill")
+                                .frame(width: 22)
+                                .foregroundStyle(.secondary)
+                            Slider(value: Binding(
+                                get: { appModel.audio.volume },
+                                set: { appModel.audio.volume = $0 }
+                            ), in: 0...1)
+                            Image(systemName: "speaker.wave.3.fill")
+                                .frame(width: 22)
+                                .foregroundStyle(.secondary)
+                        }
+                        Toggle("Без звука", isOn: Binding(
+                            get: { appModel.audio.isMuted },
+                            set: { appModel.audio.isMuted = $0 }
+                        ))
+                        Text(appModel.audio.statusMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
-
-            Section("Громкость") {
-                Slider(value: Binding(
-                    get: { appModel.audio.volume },
-                    set: { appModel.audio.volume = $0 }
-                ), in: 0...1) {
-                    Text("Громкость")
-                }
-                Toggle("Без звука", isOn: Binding(
-                    get: { appModel.audio.isMuted },
-                    set: { appModel.audio.isMuted = $0 }
-                ))
-                Text(appModel.audio.statusMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 6)
         }
-        .formStyle(.grouped)
     }
 }
+
+// MARK: - Diagnostics
 
 private struct DiagnosticsTab: View {
     @ObservedObject var appModel: AppModel
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(spacing: 14) {
                 USBInfoCard(usb: appModel.usbInfo)
                 FrameTimingCard(
                     samples: appModel.capture.frameIntervalSamples,
@@ -193,7 +242,8 @@ private struct DiagnosticsTab: View {
                 )
                 FormatPickerCard(appModel: appModel)
             }
-            .padding(8)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 6)
         }
         .onAppear {
             appModel.refreshDeviceMetadata()
@@ -205,26 +255,26 @@ private struct USBInfoCard: View {
     let usb: USBDeviceInfo?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("USB")
-                .font(.headline)
-
+        GlassCard("USB", icon: "cable.connector") {
             if let usb {
-                HStack {
-                    Image(systemName: usb.speed.isUSB3 ? "bolt.fill" : "exclamationmark.triangle.fill")
-                        .foregroundStyle(usb.speed.isUSB3 ? .green : .orange)
-                    VStack(alignment: .leading) {
-                        Text(usb.summary)
-                            .font(.body)
-                        Text(String(format: "VID 0x%04X · PID 0x%04X · %@", usb.vendorID, usb.productID, usb.versionString))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 10) {
+                        Image(systemName: usb.speed.isUSB3 ? "bolt.fill" : "exclamationmark.triangle.fill")
+                            .font(.title3)
+                            .foregroundStyle(usb.speed.isUSB3 ? .green : .orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(usb.summary)
+                                .font(.body)
+                            Text(String(format: "VID 0x%04X · PID 0x%04X · %@", usb.vendorID, usb.productID, usb.versionString))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                }
-                if let warning = usb.bandwidthWarning {
-                    Text(warning)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+                    if let warning = usb.bandwidthWarning {
+                        Text(warning)
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                 }
             } else {
                 Text("USB-устройство не найдено в IORegistry. Возможно, карта подключена не как USB-устройство.")
@@ -232,9 +282,6 @@ private struct USBInfoCard: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -243,8 +290,8 @@ private struct FrameTimingCard: View {
     let targetFps: Double
     let uvcFps: Double
     let ptsFps: Double
-    let sourceSampleDuration: Double          // CMSampleBufferGetDuration в секундах
-    let actualMinFrameDuration: Double        // device.activeVideoMinFrameDuration (s)
+    let sourceSampleDuration: Double
+    let actualMinFrameDuration: Double
     let droppedSamples: UInt64
 
     var body: some View {
@@ -252,53 +299,49 @@ private struct FrameTimingCard: View {
         let durationFps = sourceSampleDuration > 0 ? 1.0 / sourceSampleDuration : 0
         let minDurFps = actualMinFrameDuration > 0 ? 1.0 / actualMinFrameDuration : 0
 
-        return VStack(alignment: .leading, spacing: 8) {
-            Text("Тайминг кадров")
-                .font(.headline)
+        GlassCard("Тайминг кадров", icon: "waveform.path.ecg") {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 16) {
+                    statBlock("Wall-clock fps", value: String(format: "%.1f", uvcFps))
+                    statBlock("PTS fps", value: String(format: "%.1f", ptsFps))
+                    statBlock(
+                        "Sample duration",
+                        value: sourceSampleDuration > 0
+                            ? String(format: "%.1f мс (%.0f fps)", sourceSampleDuration * 1000, durationFps)
+                            : "—"
+                    )
+                    statBlock("Цель", value: targetFps > 0 ? String(format: "%.0f", targetFps) : "—")
+                }
 
-            HStack(spacing: 16) {
-                statBlock("Wall-clock fps", value: String(format: "%.1f", uvcFps))
-                statBlock("PTS fps", value: String(format: "%.1f", ptsFps))
-                statBlock(
-                    "Sample duration",
-                    value: sourceSampleDuration > 0
-                        ? String(format: "%.1f мс (%.0f fps)", sourceSampleDuration * 1000, durationFps)
-                        : "—"
-                )
-                statBlock("Цель", value: targetFps > 0 ? String(format: "%.0f", targetFps) : "—")
-            }
+                FrameIntervalHistogram(samples: samples, targetFps: targetFps)
 
-            FrameIntervalHistogram(samples: samples, targetFps: targetFps)
-
-            HStack(spacing: 12) {
-                statBlock("Среднее", value: stats.count > 0 ? String(format: "%.1f мс", stats.mean * 1000) : "—")
-                statBlock("σ", value: stats.count > 0 ? String(format: "%.1f мс", stats.stdDev * 1000) : "—")
-                statBlock("min", value: stats.count > 0 ? String(format: "%.1f", stats.min * 1000) : "—")
-                statBlock("max", value: stats.count > 0 ? String(format: "%.1f", stats.max * 1000) : "—")
-                statBlock("вне ±10%", value: stats.count > 0 ? String(format: "%.0f%%", stats.outlierShare * 100) : "—")
-                statBlock("AVF дропы", value: "\(droppedSamples)")
-            }
-            .font(.caption)
-
-            if actualMinFrameDuration > 0, targetFps > 0,
-               abs(actualMinFrameDuration - 1.0 / targetFps) > (1.0 / targetFps) * 0.1 {
-                Text(String(
-                    format: "⚠️ После старта activeVideoMinFrameDuration = %.1f мс (~%.0f fps), а должно быть 1/%.0f. AVCaptureSession не приняла нашу настройку даже после повторного set'а — это значит, формат как таковой картой не отдаётся, она UVC-уровневым дескриптором не подтверждает 60.",
-                    actualMinFrameDuration * 1000, minDurFps, targetFps
-                ))
+                HStack(spacing: 12) {
+                    statBlock("Среднее", value: stats.count > 0 ? String(format: "%.1f мс", stats.mean * 1000) : "—")
+                    statBlock("σ", value: stats.count > 0 ? String(format: "%.1f мс", stats.stdDev * 1000) : "—")
+                    statBlock("min", value: stats.count > 0 ? String(format: "%.1f", stats.min * 1000) : "—")
+                    statBlock("max", value: stats.count > 0 ? String(format: "%.1f", stats.max * 1000) : "—")
+                    statBlock("вне ±10%", value: stats.count > 0 ? String(format: "%.0f%%", stats.outlierShare * 100) : "—")
+                    statBlock("AVF дропы", value: "\(droppedSamples)")
+                }
                 .font(.caption)
-                .foregroundStyle(.red)
-            }
 
-            if let analysis = analysis(uvcFps: uvcFps, ptsFps: ptsFps, durationFps: durationFps, targetFps: targetFps) {
-                Text(analysis.message)
+                if actualMinFrameDuration > 0, targetFps > 0,
+                   abs(actualMinFrameDuration - 1.0 / targetFps) > (1.0 / targetFps) * 0.1 {
+                    Text(String(
+                        format: "После старта activeVideoMinFrameDuration = %.1f мс (~%.0f fps), а должно быть 1/%.0f. AVCaptureSession не приняла нашу настройку даже после повторного set'а — это значит, формат как таковой картой не отдаётся, она UVC-уровневым дескриптором не подтверждает 60.",
+                        actualMinFrameDuration * 1000, minDurFps, targetFps
+                    ))
                     .font(.caption)
-                    .foregroundStyle(analysis.color)
+                    .foregroundStyle(.red)
+                }
+
+                if let analysis = analysis(uvcFps: uvcFps, ptsFps: ptsFps, durationFps: durationFps, targetFps: targetFps) {
+                    Text(analysis.message)
+                        .font(.caption)
+                        .foregroundStyle(analysis.color)
+                }
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private struct Analysis {
@@ -319,15 +362,14 @@ private struct FrameTimingCard: View {
             )
         }
 
-        // Wall-clock == PTS == ниже целевого. Источник реально отдаёт меньше.
         if durationFps > 0, abs(durationFps - uvcFps) < 5 {
             return Analysis(
                 message: """
-                Источник физически отдаёт ~\(Int(uvcFps.rounded())) fps. Sample duration в кадре = ~\(Int(durationFps.rounded())) fps. Это значит, карта/HDMI на входе так и заявляет.
+                Источник физически отдаёт ~\(Int(uvcFps.rounded())) fps. Sample duration в кадре = ~\(Int(durationFps.rounded())) fps.
 
                 Что проверить:
-                • Switch: Системные настройки → Телевизор → Разрешение и Гц вручную выставить 60 Hz (не «Авто»). При «Авто» Switch может уйти в 50 Hz/PAL по EDID карты.
-                • Кабель HDMI: попробуйте другой шнур, особенно если он 1.4/короткий комплектный.
+                • Switch: Системные настройки → Телевизор → Разрешение и Гц вручную выставить 60 Hz (не «Авто»).
+                • Кабель HDMI: попробуйте другой шнур, особенно если он 1.4 / короткий комплектный.
                 • Cam Link 4K на ezcap может ронять до 25 fps если EDID Mac/входа сообщает PAL.
                 • Перезагрузить карту: вынуть/вставить USB при включённом Switch.
                 """,
@@ -356,33 +398,36 @@ private struct FormatPickerCard: View {
     @ObservedObject var appModel: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("UVC-форматы карты")
-                    .font(.headline)
-                Spacer()
+        GlassCard("UVC-форматы карты", icon: "list.bullet.rectangle.portrait") {
+            VStack(alignment: .leading, spacing: 8) {
                 if appModel.manualFormatID != nil {
-                    Button("Сбросить ручной выбор") {
-                        appModel.applyManualFormat(nil)
+                    HStack {
+                        Text("Активен ручной выбор формата")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Сбросить") {
+                            appModel.applyManualFormat(nil)
+                        }
+                        .buttonStyle(.glass)
+                        .controlSize(.small)
                     }
-                    .buttonStyle(.borderless)
                 }
-            }
 
-            if appModel.availableFormats.isEmpty {
-                Text("Список пуст. Подключите карту и нажмите «Старт».")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(appModel.availableFormats) { fmt in
-                    formatRow(fmt)
-                    Divider()
+                if appModel.availableFormats.isEmpty {
+                    Text("Список пуст. Подключите карту и нажмите «Старт».")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(appModel.availableFormats) { fmt in
+                        formatRow(fmt)
+                        if fmt.id != appModel.availableFormats.last?.id {
+                            Divider().opacity(0.25)
+                        }
+                    }
                 }
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
     }
 
     @ViewBuilder
@@ -391,24 +436,26 @@ private struct FormatPickerCard: View {
         let isManual = appModel.manualFormatID == fmt.id
 
         HStack(alignment: .center, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(fmt.displayLabel)
                         .font(.body.monospacedDigit())
                     if isActive {
                         Text("активный")
-                            .font(.caption2)
-                            .padding(.horizontal, 4)
-                            .background(Color.green.opacity(0.25), in: Capsule())
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .glassEffect(.regular.tint(.green), in: .capsule)
                     }
                     if isManual {
-                        Text("выбран вручную")
-                            .font(.caption2)
-                            .padding(.horizontal, 4)
-                            .background(Color.blue.opacity(0.25), in: Capsule())
+                        Text("ручной")
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .glassEffect(.regular.tint(.blue), in: .capsule)
                     }
                 }
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     if fmt.isMetalCompatibleNV12 {
                         Label("NV12 → Metal", systemImage: "checkmark.seal.fill")
                             .font(.caption2)
@@ -433,7 +480,8 @@ private struct FormatPickerCard: View {
             Button("Выбрать") {
                 appModel.applyManualFormat(fmt.id)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.glass)
+            .controlSize(.small)
             .disabled(isManual)
         }
         .padding(.vertical, 4)

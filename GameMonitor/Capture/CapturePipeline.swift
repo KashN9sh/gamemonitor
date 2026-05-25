@@ -159,12 +159,17 @@ final class CapturePipeline: NSObject, ObservableObject {
     }
 
     /// Управление громкостью audio preview output. 0..1, mute = volume = 0.
+    /// Пишем сразу из main-потока — AVCaptureAudioPreviewOutput thread-safe для KVC,
+    /// а из sessionQueue апдейты иногда теряются если сессия как раз делает re-config.
     func setAudioVolume(_ volume: Float, isMuted: Bool) {
-        sessionQueue.async { [weak self] in
-            guard let self else { return }
-            self.pendingAudioVolume = volume
-            self.pendingAudioMuted = isMuted
-            self.audioPreviewOutput?.volume = isMuted ? 0 : volume
+        let target: Float = isMuted ? 0 : max(0, min(1, volume))
+        pendingAudioVolume = volume
+        pendingAudioMuted = isMuted
+        if let preview = audioPreviewOutput {
+            preview.volume = target
+            print("[CapturePipeline] setAudioVolume: vol=\(volume) muted=\(isMuted) → preview.volume=\(preview.volume)")
+        } else {
+            print("[CapturePipeline] setAudioVolume: vol=\(volume) muted=\(isMuted) (no preview output yet, cached)")
         }
     }
 

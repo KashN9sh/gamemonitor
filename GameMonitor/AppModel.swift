@@ -167,6 +167,19 @@ final class AppModel: ObservableObject {
         mainWindow = window
         // Без .fullScreenPrimary окно не сможет уйти в native fullscreen Space.
         window.collectionBehavior.insert(.fullScreenPrimary)
+        // Media-app chrome: контент идёт под title bar, без видимого заголовка,
+        // чёрный фон под плеер. Liquid Glass elements рендерятся поверх.
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.styleMask.insert(.fullSizeContentView)
+        // ВАЖНО: isMovableByWindowBackground = false. Иначе AppKit перехватывает
+        // mouse-down где попало (включая glass-капсулу с Slider'ом) и таскает окно
+        // вместо thumb'а. Окно всё равно можно двигать за прозрачную title-bar зону
+        // сверху (~28pt) — она здесь сохраняется.
+        window.isMovableByWindowBackground = false
+        window.backgroundColor = .black
+        window.minSize = NSSize(width: 960, height: 540)
+        window.setFrameAutosaveName("GameMonitorMainWindow")
 
         for observer in fullscreenObservers {
             NotificationCenter.default.removeObserver(observer)

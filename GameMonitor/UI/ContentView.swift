@@ -1,6 +1,9 @@
 import AppKit
 import SwiftUI
 
+/// Тонкий диспетчер: native fullscreen → FullscreenPlayerView, иначе MediaPlayerView.
+/// Регистрирует main window в AppModel через WindowAccessor — это нужно, чтобы
+/// AppModel мог переключать окно в native fullscreen.
 struct ContentView: View {
     @ObservedObject var appModel: AppModel
 
@@ -9,7 +12,7 @@ struct ContentView: View {
             if appModel.isFullscreen {
                 FullscreenPlayerView(appModel: appModel)
             } else {
-                normalLayout
+                MediaPlayerView(appModel: appModel)
             }
         }
         .background(
@@ -19,96 +22,10 @@ struct ContentView: View {
         )
         .onDisappear { appModel.persistSettings() }
     }
-
-    private var normalLayout: some View {
-        VStack(spacing: 16) {
-            Text("GameMonitor")
-                .font(.title2.bold())
-
-            Text("Switch (HDMI) → Cam Link → Mac → Studio Display")
-                .foregroundStyle(.secondary)
-
-            GroupBox {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("Разрешение и FPS задаёт Switch", systemImage: "gamecontroller")
-                        .font(.headline)
-                    Text("Режим «Авто» на консоли подстраивается под TV. GameMonitor **не меняет** HDMI — только показывает то, что пришло с карты.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("Чтобы сменить картинку: **Настройки Switch → TV → выберите 1440p / 1080p / 4K вручную** (не «Авто»).")
-                        .font(.caption)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            if appModel.capture.uvcUnchangedAfterPresetSwitch || appModel.capture.mismatchHint != nil {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                    Text(appModel.capture.mismatchHint ?? "Режим UVC не изменился после смены пресета.")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
-                .padding(10)
-                .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-            }
-
-            if !appModel.rendererAvailable {
-                Text("⚠️ Metal недоступен на этом Mac. Видеопросмотр не будет работать.")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
-
-            HStack(spacing: 12) {
-                Button("Старт") { appModel.start() }
-                    .keyboardShortcut(.return, modifiers: .command)
-                    .disabled(!appModel.rendererAvailable)
-                Button("Стоп") { appModel.stop() }
-                Button("Настройки…") { openSettings() }
-            }
-
-            GroupBox("Статус") {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(appModel.capture.statusMessage)
-                    Text(appModel.capture.requestedFormatDescription)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(appModel.capture.activeFormatDescription)
-                        .font(.caption)
-                    Text("Апскейл: \(appModel.upscaleMode.title)")
-                        .font(.caption)
-                    Text(String(format: "FPS UVC: %.1f", appModel.capture.uvcFps))
-                    Text(String(format: "FPS экран: %.1f", appModel.presentedFps))
-                    Text(appModel.audio.statusMessage)
-                        .font(.caption)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            PlayerView(appModel: appModel)
-                .frame(width: 640, height: 360)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-        }
-        .padding(24)
-        .frame(minWidth: 720, minHeight: 600)
-    }
-
-    private func openSettings() {
-        let controller = NSHostingController(rootView: SettingsView(appModel: appModel))
-        let window = NSWindow(contentViewController: controller)
-        window.title = "Настройки GameMonitor"
-        window.styleMask = [.titled, .closable]
-        // .floating, чтобы окно гарантированно всплыло поверх native fullscreen Space
-        // плеера. macOS откроет его в собственном Space, но иногда возвращает фокус
-        // на fullscreen окно — floating это нивелирует.
-        window.level = .floating
-        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
 }
 
+/// Используется как ContentView в обычном (не fullscreen) режиме main window.
+/// Оставлен для совместимости со старыми вызовами; реальное наполнение — в MediaPlayerView.
 struct PlayerView: View {
     @ObservedObject var appModel: AppModel
 
@@ -125,9 +42,8 @@ struct PlayerView: View {
     }
 }
 
-/// Полноэкранный layout: один MetalCaptureSurface на весь contentView, поверх — overlay.
-/// Никакого второго NSWindow, никакого NSHostingView. Окно просто переключается в native
-/// fullscreen Space, а SwiftUI меняет layout — это самый чистый Apple-way.
+/// Полноэкранный layout: full-bleed плеер + glass HUD поверх. Используется,
+/// когда main window ушёл в native fullscreen Space.
 struct FullscreenPlayerView: View {
     @ObservedObject var appModel: AppModel
 
@@ -138,10 +54,23 @@ struct FullscreenPlayerView: View {
                 MetalCaptureSurface(renderer: renderer)
                     .ignoresSafeArea()
             }
-            if appModel.showStatsOverlay {
-                StatsOverlay(appModel: appModel)
+            if let hint = appModel.capture.mismatchHint, appModel.capture.isRunning {
+                MismatchToast(message: hint)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 28)
             }
+            if appModel.showStatsOverlay && appModel.capture.isRunning {
+                StatsOverlay(appModel: appModel)
+                    .frame(maxWidth: 320, alignment: .topTrailing)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .padding(20)
+            }
+            FloatingControlBar(appModel: appModel)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, 28)
+                .autoHide(idle: 2.5, forceVisible: !appModel.capture.isRunning)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .preferredColorScheme(.dark)
     }
 }
