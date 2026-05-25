@@ -1,0 +1,61 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcscheme
+!default.xcscheme
+*.moved-aside
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+timeline.xctimeline
+
+# Swift Package Manager
+.build/
+Packages/
+Package.resolved
+.swiftpm/
+.netrc
+
+# Playgrounds
+playground.xcworkspace
+
+# CocoaPods (на будущее)
+Pods/
+
+# Carthage (на будущее)
+Carthage/Build/
+Carthage/Checkouts
+
+# fastlane (на будущее)
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# Editors / IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS / misc
+*.log
+.env
+.env.*
