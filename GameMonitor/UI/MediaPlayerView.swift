@@ -28,12 +28,21 @@ struct MediaPlayerView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
-            if appModel.showStatsOverlay && appModel.capture.isRunning {
-                StatsOverlay(appModel: appModel)
-                    .frame(maxWidth: 320, alignment: .topTrailing)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .padding(20)
-                    .transition(.opacity)
+            if appModel.capture.isRunning {
+                switch appModel.statsDisplayMode {
+                case .off:
+                    EmptyView()
+                case .compact:
+                    CompactFPSOverlay(appModel: appModel)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                        .transition(.opacity)
+                case .full:
+                    StatsOverlay(appModel: appModel)
+                        .frame(maxWidth: 320, alignment: .topTrailing)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                        .padding(20)
+                        .transition(.opacity)
+                }
             }
 
             FloatingControlBar(appModel: appModel)
@@ -44,7 +53,7 @@ struct MediaPlayerView: View {
         .preferredColorScheme(.dark)
         .animation(.smooth(duration: 0.35), value: appModel.capture.isRunning)
         .animation(.smooth(duration: 0.35), value: appModel.capture.mismatchHint)
-        .animation(.smooth(duration: 0.35), value: appModel.showStatsOverlay)
+        .animation(.smooth(duration: 0.35), value: appModel.statsDisplayMode)
         .onDisappear { appModel.persistSettings() }
     }
 }

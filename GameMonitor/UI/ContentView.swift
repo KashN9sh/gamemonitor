@@ -35,7 +35,13 @@ struct PlayerView: View {
             if let renderer = appModel.renderer {
                 MetalCaptureSurface(renderer: renderer)
             }
-            if appModel.showStatsOverlay {
+            switch appModel.statsDisplayMode {
+            case .off:
+                EmptyView()
+            case .compact:
+                CompactFPSOverlay(appModel: appModel)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            case .full:
                 StatsOverlay(appModel: appModel)
             }
         }
@@ -59,11 +65,19 @@ struct FullscreenPlayerView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .padding(.top, 28)
             }
-            if appModel.showStatsOverlay && appModel.capture.isRunning {
-                StatsOverlay(appModel: appModel)
-                    .frame(maxWidth: 320, alignment: .topTrailing)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .padding(20)
+            if appModel.capture.isRunning {
+                switch appModel.statsDisplayMode {
+                case .off:
+                    EmptyView()
+                case .compact:
+                    CompactFPSOverlay(appModel: appModel)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                case .full:
+                    StatsOverlay(appModel: appModel)
+                        .frame(maxWidth: 320, alignment: .topTrailing)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                        .padding(20)
+                }
             }
             FloatingControlBar(appModel: appModel)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)

@@ -15,7 +15,7 @@ final class AppModel: ObservableObject {
     @Published var selectedAudioDeviceID: String? = AppSettings.selectedAudioDeviceID
     @Published var selectedScreenID: Int?
     @Published var fullscreenOnLaunch: Bool = AppSettings.fullscreenOnLaunch
-    @Published var showStatsOverlay: Bool = AppSettings.showStatsOverlay
+    @Published var statsDisplayMode: StatsDisplayMode = AppSettings.statsDisplayMode
     @Published var videoPreset: VideoCapturePreset = AppSettings.videoPreset
     @Published var upscaleMode: UpscaleMode = AppSettings.upscaleMode
     @Published var manualFormatID: String? = AppSettings.manualFormatID
@@ -271,7 +271,7 @@ final class AppModel: ObservableObject {
         AppSettings.selectedAudioDeviceID = selectedAudioDeviceID
         AppSettings.selectedScreenID = selectedScreenID
         AppSettings.fullscreenOnLaunch = fullscreenOnLaunch
-        AppSettings.showStatsOverlay = showStatsOverlay
+        AppSettings.statsDisplayMode = statsDisplayMode
         AppSettings.videoPreset = videoPreset
         AppSettings.upscaleMode = upscaleMode
         AppSettings.manualFormatID = manualFormatID

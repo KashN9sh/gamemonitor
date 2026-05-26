@@ -129,7 +129,13 @@ private struct DisplaySettingsTab: View {
                 GlassCard("Поведение", icon: "rectangle.expand.vertical") {
                     VStack(alignment: .leading, spacing: 12) {
                         Toggle("Fullscreen при запуске", isOn: $appModel.fullscreenOnLaunch)
-                        Toggle("Показывать статистику", isOn: $appModel.showStatsOverlay)
+
+                        Picker("Статистика", selection: $appModel.statsDisplayMode) {
+                            ForEach(StatsDisplayMode.allCases) { mode in
+                                Label(mode.title, systemImage: mode.systemImage).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
 
                         Button {
                             appModel.enterFullscreen()

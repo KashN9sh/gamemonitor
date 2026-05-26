@@ -28,7 +28,18 @@ struct GameMonitorApp: App {
                     }
                 }
                 .keyboardShortcut(.return, modifiers: .command)
-                Toggle("Показывать статистику", isOn: $appModel.showStatsOverlay)
+
+                Divider()
+
+                Picker("Статистика", selection: $appModel.statsDisplayMode) {
+                    ForEach(StatsDisplayMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                Button("Сменить режим статистики") {
+                    appModel.statsDisplayMode = appModel.statsDisplayMode.next
+                }
+                .keyboardShortcut("i", modifiers: .command)
             }
         }
 

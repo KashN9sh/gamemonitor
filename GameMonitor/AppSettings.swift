@@ -1,5 +1,42 @@
 import Foundation
 
+/// Три режима HUD-а со статистикой поверх плеера.
+/// - `.off` — ничего не рисуем (чистая картинка).
+/// - `.compact` — крупная полупрозрачная цифра FPS в углу, в духе iPhone Lock Screen.
+/// - `.full` — подробная glass-карточка со всеми метриками (UVC/PTS/GPU и т.д.).
+enum StatsDisplayMode: String, CaseIterable, Identifiable {
+    case off
+    case compact
+    case full
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .off: return "Скрыть"
+        case .compact: return "Только FPS"
+        case .full: return "Подробная"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .off: return "rectangle"
+        case .compact: return "speedometer"
+        case .full: return "chart.bar.doc.horizontal"
+        }
+    }
+
+    /// Циклический шаг для горячей клавиши — off → compact → full → off.
+    var next: StatsDisplayMode {
+        switch self {
+        case .off: return .compact
+        case .compact: return .full
+        case .full: return .off
+        }
+    }
+}
+
 enum AppSettings {
     private static let defaults = UserDefaults.standard
 
@@ -51,9 +88,21 @@ enum AppSettings {
         set { defaults.set(newValue, forKey: "isMuted") }
     }
 
-    static var showStatsOverlay: Bool {
-        get { defaults.object(forKey: "showStatsOverlay") as? Bool ?? true }
-        set { defaults.set(newValue, forKey: "showStatsOverlay") }
+    /// Какой HUD со статистикой рисуем поверх плеера.
+    /// Миграция: если есть только старый булевый ключ `showStatsOverlay`,
+    /// true → `.compact` (новый «лёгкий» вариант), false → `.off`.
+    static var statsDisplayMode: StatsDisplayMode {
+        get {
+            if let raw = defaults.string(forKey: "statsDisplayMode"),
+               let mode = StatsDisplayMode(rawValue: raw) {
+                return mode
+            }
+            if defaults.object(forKey: "showStatsOverlay") != nil {
+                return defaults.bool(forKey: "showStatsOverlay") ? .compact : .off
+            }
+            return .compact
+        }
+        set { defaults.set(newValue.rawValue, forKey: "statsDisplayMode") }
     }
 
     static var upscaleMode: UpscaleMode {
