@@ -122,11 +122,21 @@ final class MetalRenderer {
         }
     }
 
+    /// Идемпотентный — если тот же layer уже привязан, ничего не делаем.
+    /// Важно: переустановка свойств (maximumDrawableCount, pixelFormat и т.п.) на
+    /// горячий layer ресетит drawable-pool. Если в этот момент render-thread сидит
+    /// в `nextDrawable()`, получим мигание/чёрный кадр. Поэтому attach строго
+    /// один раз — при первом подключении view к окну.
     func attach(layer: CAMetalLayer) {
+        if attachedLayer === layer { return }
         layer.device = device
         layer.pixelFormat = .bgra8Unorm
         layer.framebufferOnly = true
-        layer.maximumDrawableCount = 2
+        // 3 drawable'а вместо 2: даёт один дополнительный «свободный» слот, чтобы
+        // `nextDrawable()` не возвращал nil во время layout-переходов / fullscreen.
+        // Латентность не растёт — pacing-логика всё равно делает один present
+        // на VSync-tick, очередь не накапливается.
+        layer.maximumDrawableCount = 3
         layer.presentsWithTransaction = false
         layer.isOpaque = true
         layer.contentsGravity = .resizeAspect

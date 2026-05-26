@@ -48,10 +48,11 @@ struct CompactFPSOverlay: View {
 
     // MARK: - Derived state
 
+    /// Округлённое целое — и для `.numericText` transition'а, и для самого UI.
     private var fpsValue: Int { max(0, Int(appModel.presentedFps.rounded())) }
 
     private var fpsString: String {
         guard appModel.capture.isRunning, appModel.presentedFps > 0 else { return "—" }
-        return String(fpsValue)
+        return "\(fpsValue)"
     }
 }
