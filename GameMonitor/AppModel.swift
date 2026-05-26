@@ -24,6 +24,7 @@ final class AppModel: ObservableObject {
     @Published var errorMessage: String?
 
     @Published private(set) var presentedFps: Double = 0
+    @Published private(set) var displayFps: Double = 0
     @Published private(set) var droppedFrames: UInt64 = 0
     @Published private(set) var gpuMilliseconds: Double = 0
     @Published private(set) var rendererAvailable = true
@@ -56,6 +57,7 @@ final class AppModel: ObservableObject {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.presentedFps = stats.presentedFps
+                self.displayFps = stats.displayFps
                 self.droppedFrames = stats.droppedFrames
                 self.gpuMilliseconds = stats.gpuMilliseconds
             }
@@ -67,7 +69,7 @@ final class AppModel: ObservableObject {
         audio.bind(capture: capture)
 
         capture.onVideoFrame = { [weak self] pixelBuffer, formatDescription in
-            self?.renderer?.render(pixelBuffer: pixelBuffer, formatDescription: formatDescription)
+            self?.renderer?.submit(pixelBuffer: pixelBuffer, formatDescription: formatDescription)
         }
     }
 
@@ -189,6 +191,7 @@ final class AppModel: ObservableObject {
     func stop() {
         capture.stop()
         audio.stop()
+        renderer?.resetPending()
         exitFullscreen()
         endPerformanceActivity()
     }

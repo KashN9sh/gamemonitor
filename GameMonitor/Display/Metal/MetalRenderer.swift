@@ -59,14 +59,27 @@ final class MetalRenderer {
 
     private var requestedMode: UpscaleMode = .spatial
 
-    // Stats
-    private var presentedFrames: UInt64 = 0
-    private var presentedWindowStart = CFAbsoluteTimeGetCurrent()
-    private(set) var presentedFps: Double = 0
-    private(set) var droppedFrames: UInt64 = 0
-    private(set) var lastGpuMilliseconds: Double = 0
+    // Pending frame from capture side. submit() пишет, tick() (с VSync) читает и
+    // обнуляет hasNewFrame. Это и есть основа decoupled pacing: UVC-callback не
+    // пытается сам презентить, а просто отдаёт «последний актуальный кадр».
+    private let frameLock = NSLock()
+    private var pendingPixelBuffer: CVPixelBuffer?
+    private var pendingFormatDescription: CMFormatDescription?
+    private var hasNewFrame = false
+
+    // Stats — все счётчики защищены statsLock, потому что tick живёт на main,
+    // а completion-handler GPU прилетает на Metal-thread.
+    private let statsLock = NSLock()
+    private var uniqueFramesInWindow = 0
+    private var displayTicksInWindow = 0
+    private var statsWindowStart = CFAbsoluteTimeGetCurrent()
+    private let statsWindowSeconds: CFTimeInterval = 1.0
     private var gpuMsAccum: Double = 0
     private var gpuMsSamples: Int = 0
+    private(set) var presentedFps: Double = 0
+    private(set) var displayFps: Double = 0
+    private(set) var droppedFrames: UInt64 = 0
+    private(set) var lastGpuMilliseconds: Double = 0
 
     var statsCallback: ((MetalRendererStats) -> Void)?
 
@@ -134,7 +147,44 @@ final class MetalRenderer {
         stateLock.unlock()
     }
 
-    func render(pixelBuffer: CVPixelBuffer, formatDescription: CMFormatDescription) {
+    /// Вызывается с capture-callback'а. Просто атомарно складывает «последний кадр»;
+    /// презентация произойдёт на ближайшем vsync через tick(). UVC-callback не
+    /// блокируется на nextDrawable() — это и убирает inter-frame jitter.
+    func submit(pixelBuffer: CVPixelBuffer, formatDescription: CMFormatDescription) {
+        frameLock.lock()
+        pendingPixelBuffer = pixelBuffer
+        pendingFormatDescription = formatDescription
+        hasNewFrame = true
+        frameLock.unlock()
+    }
+
+    /// Сбросить отложенный кадр — вызывается при остановке захвата, чтобы не держать
+    /// последний CVPixelBuffer.
+    func resetPending() {
+        frameLock.lock()
+        pendingPixelBuffer = nil
+        pendingFormatDescription = nil
+        hasNewFrame = false
+        frameLock.unlock()
+    }
+
+    /// Дёргается из CADisplayLink на VSync. Если есть свежий кадр — рендерит и
+    /// презентит ровно на этот VSync; иначе ничего не делает (предыдущий drawable
+    /// остаётся на экране → нулевой GPU-cost, идеальный hold).
+    func tick() {
+        frameLock.lock()
+        let isNew = hasNewFrame
+        let pb = pendingPixelBuffer
+        let fd = pendingFormatDescription
+        hasNewFrame = false
+        frameLock.unlock()
+
+        countDisplayTick()
+        guard isNew, let pb, let fd else { return }
+        renderInternal(pixelBuffer: pb, formatDescription: fd)
+    }
+
+    private func renderInternal(pixelBuffer: CVPixelBuffer, formatDescription: CMFormatDescription) {
         guard let layer = attachedLayer else { return }
 
         let width = CVPixelBufferGetWidth(pixelBuffer)
@@ -191,11 +241,13 @@ final class MetalRenderer {
         commandBuffer.addCompletedHandler { [weak self] buffer in
             guard let self else { return }
             let gpuMs = (buffer.gpuEndTime - buffer.gpuStartTime) * 1_000.0
-            self.recordPresented(gpuMs: gpuMs)
+            self.recordGpuSample(gpuMs)
         }
 
         commandBuffer.present(drawable)
         commandBuffer.commit()
+
+        countUniqueFrame()
     }
 
     private func makePlaneTexture(pixelBuffer: CVPixelBuffer,
@@ -426,43 +478,71 @@ final class MetalRenderer {
     }
 
     private func recordDrop() {
+        statsLock.lock()
         droppedFrames &+= 1
-        emitStats()
+        let snapshot = currentStatsSnapshotLocked()
+        statsLock.unlock()
+        statsCallback?(snapshot)
     }
 
-    private func recordPresented(gpuMs: Double) {
-        presentedFrames &+= 1
-        gpuMsAccum += gpuMs
-        gpuMsSamples += 1
-
-        let now = CFAbsoluteTimeGetCurrent()
-        let elapsed = now - presentedWindowStart
-        if elapsed >= 0.5 {
-            presentedFps = Double(presentedFrames) / elapsed
-            presentedFrames = 0
-            presentedWindowStart = now
-
-            if gpuMsSamples > 0 {
-                lastGpuMilliseconds = gpuMsAccum / Double(gpuMsSamples)
-                gpuMsAccum = 0
-                gpuMsSamples = 0
-            }
-            emitStats()
+    private func countDisplayTick() {
+        statsLock.lock()
+        displayTicksInWindow += 1
+        let snapshot = rollWindowLocked()
+        statsLock.unlock()
+        if let snapshot {
+            statsCallback?(snapshot)
         }
     }
 
-    private func emitStats() {
-        let snapshot = MetalRendererStats(
+    private func countUniqueFrame() {
+        statsLock.lock()
+        uniqueFramesInWindow += 1
+        statsLock.unlock()
+    }
+
+    private func recordGpuSample(_ gpuMs: Double) {
+        statsLock.lock()
+        gpuMsAccum += gpuMs
+        gpuMsSamples += 1
+        statsLock.unlock()
+    }
+
+    /// Если за statsLock прошло окно — пересчитываем published-значения и
+    /// возвращаем snapshot для статистического callback'а. Иначе nil.
+    private func rollWindowLocked() -> MetalRendererStats? {
+        let now = CFAbsoluteTimeGetCurrent()
+        let elapsed = now - statsWindowStart
+        guard elapsed >= statsWindowSeconds else { return nil }
+        presentedFps = Double(uniqueFramesInWindow) / elapsed
+        displayFps = Double(displayTicksInWindow) / elapsed
+        if gpuMsSamples > 0 {
+            lastGpuMilliseconds = gpuMsAccum / Double(gpuMsSamples)
+        }
+        uniqueFramesInWindow = 0
+        displayTicksInWindow = 0
+        gpuMsAccum = 0
+        gpuMsSamples = 0
+        statsWindowStart = now
+        return currentStatsSnapshotLocked()
+    }
+
+    private func currentStatsSnapshotLocked() -> MetalRendererStats {
+        MetalRendererStats(
             presentedFps: presentedFps,
+            displayFps: displayFps,
             droppedFrames: droppedFrames,
             gpuMilliseconds: lastGpuMilliseconds
         )
-        statsCallback?(snapshot)
     }
 }
 
 struct MetalRendererStats {
+    /// Уникальные кадры с источника, презентованные за окно. На стабильном 60 Гц-сорсе
+    /// и при display ≥ 60 Гц — должно быть 60.0 без джиттера.
     let presentedFps: Double
+    /// Темп тиков display link'а — фактическая частота VSync.
+    let displayFps: Double
     let droppedFrames: UInt64
     let gpuMilliseconds: Double
 }

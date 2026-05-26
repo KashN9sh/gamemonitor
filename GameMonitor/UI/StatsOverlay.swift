@@ -80,6 +80,14 @@ struct StatsOverlay: View {
                 )
             }
             metricRow("Экран", value: String(format: "%.1f", appModel.presentedFps), unit: "fps")
+            if appModel.displayFps > 0 {
+                metricRow(
+                    "VSync",
+                    value: String(format: "%.0f", appModel.displayFps),
+                    unit: "Hz",
+                    secondary: true
+                )
+            }
             metricRow("GPU", value: String(format: "%.2f", appModel.gpuMilliseconds), unit: "мс")
 
             if appModel.capture.configuredFrameRate > 0 {
