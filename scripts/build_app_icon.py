@@ -6,12 +6,16 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
 
 
-SRC = Path("/Users/el-muncho/.cursor/projects/Users-el-muncho-projects-gamemonitor/assets/app_icon_source_v4.png")
+DEFAULT_SRC = Path(
+    "/Users/el-muncho/.cursor/projects/Users-el-muncho-projects-gamemonitor/assets/app_icon_source_v4.png"
+)
+SRC = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_SRC
 DST_DIR = Path("/Users/el-muncho/projects/gamemonitor/GameMonitor/Assets.xcassets/AppIcon.appiconset")
 WORK_DIR = Path("/Users/el-muncho/projects/gamemonitor/scripts/_build")
 
