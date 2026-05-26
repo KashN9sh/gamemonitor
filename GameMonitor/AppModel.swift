@@ -32,6 +32,12 @@ final class AppModel: ObservableObject {
     private weak var mainWindow: NSWindow?
     private var fullscreenObservers: [NSObjectProtocol] = []
 
+    /// Токен ProcessInfo-активности. Пока он не nil — система знает, что мы
+    /// занимаемся realtime-задачей: не усыпляет дисплей, не парковает наши треды
+    /// и не включает App Nap. В сумме с `LSApplicationCategoryType = games` и
+    /// native fullscreen это даёт macOS право включить полный Game Mode.
+    private var performanceActivityToken: NSObjectProtocol?
+
     init() {
         let renderer = MetalRenderer()
         self.renderer = renderer
@@ -69,6 +75,32 @@ final class AppModel: ObservableObject {
         for observer in fullscreenObservers {
             NotificationCenter.default.removeObserver(observer)
         }
+        if let token = performanceActivityToken {
+            ProcessInfo.processInfo.endActivity(token)
+        }
+    }
+
+    // MARK: - Performance / Game Mode
+
+    /// Просим систему обращаться с процессом как с realtime-задачей:
+    /// • `.latencyCritical` — приоритет планировщика выше дефолтного,
+    /// • `.userInitiated` — выключаем App Nap,
+    /// • `.idleSystemSleepDisabled` + `.idleDisplaySleepDisabled` — не отрубаем экран,
+    ///   пока пользователь играет (управление часто идёт с геймпада, мышь/клавиатура простаивают).
+    /// Дополнительно к `LSApplicationCategoryType = games` это даёт macOS
+    /// сигнал включить Game Mode при переходе в native fullscreen.
+    func beginPerformanceActivity() {
+        guard performanceActivityToken == nil else { return }
+        performanceActivityToken = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .latencyCritical, .idleSystemSleepDisabled, .idleDisplaySleepDisabled],
+            reason: "GameMonitor: realtime UVC capture + Metal render"
+        )
+    }
+
+    func endPerformanceActivity() {
+        guard let token = performanceActivityToken else { return }
+        ProcessInfo.processInfo.endActivity(token)
+        performanceActivityToken = nil
     }
 
     func reloadDevices() {
@@ -106,6 +138,7 @@ final class AppModel: ObservableObject {
 
     func start() {
         requestCapturePermissions()
+        beginPerformanceActivity()
 
         guard let deviceInfo = devices.first(where: { $0.id == selectedDeviceID })
             ?? DeviceDiscovery.preferredVideoDevice(savedID: selectedDeviceID)
@@ -157,6 +190,7 @@ final class AppModel: ObservableObject {
         capture.stop()
         audio.stop()
         exitFullscreen()
+        endPerformanceActivity()
     }
 
     /// Регистрирует ссылку на main window. Вызывается из ContentView через `WindowAccessor`,
